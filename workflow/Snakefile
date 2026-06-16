@@ -1,0 +1,114 @@
+RESDIR = f"{ACT_GDS_ROOT}/results"
+LOGDIR = f"{ACT_GDS_ROOT}/logs"
+TEMPDIR = f"{ACT_GDS_ROOT}/temp"
+
+rule get_missnp:
+    container: PLINK_IMG
+    input:
+        act1_bed=f"{BFILES["ACT1"]}.bed",
+        act1_bim=f"{BFILES["ACT1"]}.bim",
+        act1_fam=f"{BFILES["ACT1"]}.fam",
+        act3_bed=lambda wildcards: f"{ACT3[wildcards.act3_cohort]}.bed",
+        act3_bim=lambda wildcards: f"{ACT3[wildcards.act3_cohort]}.bim",
+        act3_fam=lambda wildcards: f"{ACT3[wildcards.act3_cohort]}.fam",
+    output:
+        missnp=temp(f"{TEMPDIR}/{{act3_cohort}}-merge.missnp"),
+    log: f"{LOGDIR}/get_missnp/{{act3_cohort}}.log"
+    params:
+        act3_prefix=lambda wildcards: ACT3[wildcards.act3_cohort],
+    shell:
+        """
+        outdir=plink-missnp-{wildcards.act3_cohort}
+        pfx=$outdir/plink
+        mkdir -p $outdir
+        plink --bed {input.act1_bed} \
+              --bim {input.act1_bim} \
+              --fam {input.act1_fam} \
+              --bmerge {params.act3_prefix} \
+              --make-bed \
+              --out $pfx || \
+            true
+        mv ${{pfx}}-merge.missnp {output.missnp}
+        mv $pfx.log {log}
+        rm -rf $outdir
+        """
+
+rule combine_missnp:
+    container: SHINY_VERSE_IMG
+    input:
+        missnp=expand(f"{TEMPDIR}/{{act3_cohort}}-merge.missnp", act3_cohort=A3_COHORTS),
+    output:
+        missnp=f"{RESDIR}/multiallelic_snps.txt",
+    log: f"{LOGDIR}/combine_missnp.log"
+    script: "scripts/combine_missnp.R"
+
+rule filter_missnp:
+    container: PLINK_IMG
+    input:
+        bed=lambda wildcards: BFILES[wildcards.cohort] + ".bed",
+        bim=lambda wildcards: BFILES[wildcards.cohort] + ".bim",
+        fam=lambda wildcards: BFILES[wildcards.cohort] + ".fam",
+        missnp=f"{RESDIR}/multiallelic_snps.txt",
+    output:
+        bed=temp(f"{TEMPDIR}/{{cohort}}_filtered.bed"),
+        bim=temp(f"{TEMPDIR}/{{cohort}}_filtered.bim"),
+        fam=temp(f"{TEMPDIR}/{{cohort}}_filtered.fam"),
+    log: f"{LOGDIR}/filter_missnp/{{cohort}}.log"
+    shell:
+        """
+        outdir=filtered-{wildcards.cohort}
+        mkdir -p $outdir
+        pfx=$outdir/plink
+        plink --bed {input.bed} \
+              --bim {input.bim} \
+              --fam {input.fam} \
+              --exclude {input.missnp} \
+              --make-bed \
+              --out $pfx
+        mv $pfx.bed {output.bed}
+        mv $pfx.bim {output.bim}
+        mv $pfx.fam {output.fam}
+        mv $pfx.log {log}
+        rm -rf $outdir
+        """
+
+# TO-DO: use correct outputs/wildcards in shell directive
+rule merge_bed:
+    container: PLINK_IMG
+    input:
+        bed=expand(f"{TEMPDIR}/{{cohort}}_filtered.bed", cohort=COHORTS),
+        bim=expand(f"{TEMPDIR}/{{cohort}}_filtered.bim", cohort=COHORTS),
+        fam=expand(f"{TEMPDIR}/{{cohort}}_filtered.fam", cohort=COHORTS),
+    output:
+        bed=temp(f"{TEMPDIR}/merged.bed"),
+        bim=temp(f"{TEMPDIR}/merged.bim"),
+        fam=temp(f"{TEMPDIR}/merged.fam"),
+    log: f"{LOGDIR}/merge_bed.log"
+    shell:
+        """
+        outdir=bmerge-gt
+        mkdir -p $outdir
+        mergelist=$outdir/mergelist.txt
+        pfx=$outdir/plink
+        echo '{input.bed} ' | sed 's/\\.bed /\\n/g' > $mergelist
+        plink \
+        --merge-list $mergelist \
+        --make-bed \
+        --out $pfx
+        mv $pfx.bed {output.bed}
+        mv $pfx.bim {output.bim}
+        mv $pfx.fam {output.fam}
+        mv $pfx.log {log}
+        rm -rf $outdir
+        """
+
+use rule convert_to_gds from serpent as serpent_convert_to_gds with:
+    container: GENESIS_IMG
+    input:
+        bed_fn=f"{TEMPDIR}/merged.bed",
+        bim_fn=f"{TEMPDIR}/merged.bim",
+        fam_fn=f"{TEMPDIR}/merged.fam",
+    log: f"{LOGDIR}/convert_to_gds.log"
+    threads: 30
+    output:
+        gds=f"{RESDIR}/act_genotyped.gds",

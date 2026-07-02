@@ -1,21 +1,24 @@
-RESDIR = f"{ACT_GDS_ROOT}/results"
-LOGDIR = f"{ACT_GDS_ROOT}/logs"
-TEMPDIR = f"{ACT_GDS_ROOT}/temp"
+module serpent:
+    snakefile: "/home/jb/development/serpent/workflow/Snakefile"
 
+BFILES={k: f"{config['data']['act']}/{k}/CleanedGenotypes/{v}" for k, v in config["bfiles"].items()}
+A3_COHORTS=[item for item in list(BFILES.keys()) if item != "ACT1"]
+
+A1_BFILE=f"{config['data']['act']}/ACT1/CleanedGenotypes/{config['bfiles']['ACT1']}"
 rule get_missnp:
-    container: PLINK_IMG
+    container: config["images"]["plink"]
     input:
-        act1_bed=f"{BFILES["ACT1"]}.bed",
-        act1_bim=f"{BFILES["ACT1"]}.bim",
-        act1_fam=f"{BFILES["ACT1"]}.fam",
-        act3_bed=lambda wildcards: f"{ACT3[wildcards.act3_cohort]}.bed",
-        act3_bim=lambda wildcards: f"{ACT3[wildcards.act3_cohort]}.bim",
-        act3_fam=lambda wildcards: f"{ACT3[wildcards.act3_cohort]}.fam",
+        act1_bed=f"{A1_BFILE}.bed",
+        act1_bim=f"{A1_BFILE}.bim",
+        act1_fam=f"{A1_BFILE}.fam",
+        act3_bed=lambda wildcards: f"{BFILES[wildcards.act3_cohort]}.bed",
+        act3_bim=lambda wildcards: f"{BFILES[wildcards.act3_cohort]}.bim",
+        act3_fam=lambda wildcards: f"{BFILES[wildcards.act3_cohort]}.fam",
     output:
-        missnp=temp(f"{TEMPDIR}/{{act3_cohort}}-merge.missnp"),
-    log: f"{LOGDIR}/get_missnp/{{act3_cohort}}.log"
+        missnp=temp("temp/{act3_cohort}-merge.missnp"),
+    log: "logs/get_missnp/{act3_cohort}.log"
     params:
-        act3_prefix=lambda wildcards: ACT3[wildcards.act3_cohort],
+        act3_prefix=lambda wildcards: f"{BFILES[wildcards.act3_cohort]}",
     shell:
         """
         outdir=plink-missnp-{wildcards.act3_cohort}
@@ -34,26 +37,27 @@ rule get_missnp:
         """
 
 rule combine_missnp:
-    container: SHINY_VERSE_IMG
+    container: config["images"]["shiny_verse"]
     input:
-        missnp=expand(f"{TEMPDIR}/{{act3_cohort}}-merge.missnp", act3_cohort=A3_COHORTS),
+        missnp=expand("temp/{act3_cohort}-merge.missnp", act3_cohort=A3_COHORTS),
     output:
-        missnp=f"{RESDIR}/multiallelic_snps.txt",
-    log: f"{LOGDIR}/combine_missnp.log"
+        missnp="results/multiallelic_snps.txt",
+    log: "logs/combine_missnp.log"
     script: "scripts/combine_missnp.R"
 
+
 rule filter_missnp:
-    container: PLINK_IMG
+    container: config["images"]["plink"]
     input:
-        bed=lambda wildcards: BFILES[wildcards.cohort] + ".bed",
-        bim=lambda wildcards: BFILES[wildcards.cohort] + ".bim",
-        fam=lambda wildcards: BFILES[wildcards.cohort] + ".fam",
-        missnp=f"{RESDIR}/multiallelic_snps.txt",
+        bed=lambda wildcards: f"{BFILES[wildcards.cohort]}.bed",
+        bim=lambda wildcards: f"{BFILES[wildcards.cohort]}.bim",
+        fam=lambda wildcards: f"{BFILES[wildcards.cohort]}.fam",
+        missnp="results/multiallelic_snps.txt",
     output:
-        bed=temp(f"{TEMPDIR}/{{cohort}}_filtered.bed"),
-        bim=temp(f"{TEMPDIR}/{{cohort}}_filtered.bim"),
-        fam=temp(f"{TEMPDIR}/{{cohort}}_filtered.fam"),
-    log: f"{LOGDIR}/filter_missnp/{{cohort}}.log"
+        bed=temp("temp/{cohort}_filtered.bed"),
+        bim=temp("temp/{cohort}_filtered.bim"),
+        fam=temp("temp/{cohort}_filtered.fam"),
+    log: "logs/filter_missnp/{cohort}.log"
     shell:
         """
         outdir=filtered-{wildcards.cohort}
@@ -74,16 +78,16 @@ rule filter_missnp:
 
 # TO-DO: use correct outputs/wildcards in shell directive
 rule merge_bed:
-    container: PLINK_IMG
+    container: config["images"]["plink"]
     input:
-        bed=expand(f"{TEMPDIR}/{{cohort}}_filtered.bed", cohort=COHORTS),
-        bim=expand(f"{TEMPDIR}/{{cohort}}_filtered.bim", cohort=COHORTS),
-        fam=expand(f"{TEMPDIR}/{{cohort}}_filtered.fam", cohort=COHORTS),
+        bed=expand("temp/{cohort}_filtered.bed", cohort=list(BFILES.keys())),
+        bim=expand("temp/{cohort}_filtered.bim", cohort=list(BFILES.keys())),
+        fam=expand("temp/{cohort}_filtered.fam", cohort=list(BFILES.keys())),
     output:
-        bed=temp(f"{TEMPDIR}/merged.bed"),
-        bim=temp(f"{TEMPDIR}/merged.bim"),
-        fam=temp(f"{TEMPDIR}/merged.fam"),
-    log: f"{LOGDIR}/merge_bed.log"
+        bed=temp("temp/merged.bed"),
+        bim=temp("temp/merged.bim"),
+        fam=temp("temp/merged.fam"),
+    log: "logs/merge_bed.log"
     shell:
         """
         outdir=bmerge-gt
@@ -103,12 +107,12 @@ rule merge_bed:
         """
 
 use rule convert_to_gds from serpent as serpent_convert_to_gds with:
-    container: GENESIS_IMG
+    container: config["images"]["genesis"]
     input:
-        bed_fn=f"{TEMPDIR}/merged.bed",
-        bim_fn=f"{TEMPDIR}/merged.bim",
-        fam_fn=f"{TEMPDIR}/merged.fam",
-    log: f"{LOGDIR}/convert_to_gds.log"
+        bed_fn="temp/merged.bed",
+        bim_fn="temp/merged.bim",
+        fam_fn="temp/merged.fam",
+    log: "logs/convert_to_gds.log"
     threads: 30
     output:
-        gds=f"{RESDIR}/act_genotyped.gds",
+        gds="results/act_genotyped.gds",

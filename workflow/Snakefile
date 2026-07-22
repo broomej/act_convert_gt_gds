@@ -2,10 +2,10 @@ module serpent:
     snakefile: "/home/jb/development/serpent/workflow/Snakefile"
 
 OUTDIR = config["outdir"]["act"]["convert_gt_gds"]
-BFILES={k: f"/data/act/{k}/CleanedGenotypes/{v}" for k, v in config["bfiles"].items()}
+BFILES={k: f"/container/act/{k}/CleanedGenotypes/{v}" for k, v in config["bfiles"].items()}
 A3_COHORTS=[item for item in list(BFILES.keys()) if item != "ACT1"]
 
-A1_BFILE=f"/data/act/ACT1/CleanedGenotypes/{config['bfiles']['ACT1']}"
+A1_BFILE=f"/container/act/ACT1/CleanedGenotypes/{config['bfiles']['ACT1']}"
 rule get_missnp:
     container: config["images"]["plink"]
     input:

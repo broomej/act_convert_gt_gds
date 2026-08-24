@@ -2,6 +2,10 @@ module serpent:
     snakefile: "/home/jb/development/serpent/workflow/Snakefile"
 
 OUTDIR = config["outdir"]["act"]["convert_gt_gds"]
+
+rule all:
+    input: f"{OUTDIR}/results/act_genotyped.gds",
+
 BFILES={k: f"/container/act/{k}/CleanedGenotypes/{v}" for k, v in config["bfiles"].items()}
 A3_COHORTS=[item for item in list(BFILES.keys()) if item != "ACT1"]
 

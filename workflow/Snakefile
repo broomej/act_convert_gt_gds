@@ -1,7 +1,7 @@
 module serpent:
     snakefile: "/home/jb/development/serpent/workflow/Snakefile"
 
-OUTDIR = config["outdir"]["act"]["convert_gt_gds"]
+OUTDIR = config["act"]["outdir"]["convert_gt_gds"]
 
 rule all:
     input: f"{OUTDIR}/results/act_genotyped.gds",

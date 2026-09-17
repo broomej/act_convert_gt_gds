@@ -6,10 +6,10 @@ OUTDIR = config["act"]["outdir"]["convert_gt_gds"]
 rule all:
     input: f"{OUTDIR}/results/act_genotyped.gds",
 
-BFILES={k: f"/container/act/{k}/CleanedGenotypes/{v}" for k, v in config["bfiles"].items()}
+BFILES={k: f"/container/act/{k}/CleanedGenotypes/{v}" for k, v in config["act"]["bfiles"].items()}
 A3_COHORTS=[item for item in list(BFILES.keys()) if item != "ACT1"]
 
-A1_BFILE=f"/container/act/ACT1/CleanedGenotypes/{config['bfiles']['ACT1']}"
+A1_BFILE=f"/container/act/ACT1/CleanedGenotypes/{config['act']['bfiles']['ACT1']}"
 rule get_missnp:
     container: config["images"]["plink"]
     input:
